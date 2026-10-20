@@ -1,0 +1,69 @@
+name: Build APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Unzip project
+        run: |
+          rm -rf project
+          mkdir project
+          ZIP=$(ls -1 *.zip 2>/dev/null | head -n 1)
+          if [ -z "$ZIP" ]; then
+            echo "No .zip file found in repo root"
+            exit 1
+          fi
+          echo "Unzipping: $ZIP"
+          unzip -q -o "$ZIP" -d project
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.7
+
+      - name: Build
+        run: |
+          SETTINGS=$(find project \( -name settings.gradle -o -name settings.gradle.kts \) | head -n 1)
+          if [ -z "$SETTINGS" ]; then
+            echo "No settings.gradle(.kts) found"
+            exit 1
+          fi
+          ROOT=$(dirname "$SETTINGS")
+          echo "Project root: $ROOT"
+          cd "$ROOT"
+          if [ -f gradlew ]; then
+            chmod +x gradlew
+            ./gradlew assembleRelease --stacktrace --no-daemon
+          else
+            gradle assembleRelease --stacktrace --no-daemon
+          fi
+
+      - name: Rename APK to mahir
+        run: |
+          APK=$(find project -path '*build/outputs/apk/release/*.apk' | head -n 1)
+          if [ -z "$APK" ]; then
+            echo "APK not found"
+            exit 1
+          fi
+          cp "$APK" mahir.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: mahir
+          path: mahir.apk
+          if-no-files-found: error
